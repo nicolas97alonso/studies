@@ -66,6 +66,7 @@ Databricks uses the **ABFS (Azure Blob File System)** driver to talk to ADLS Gen
 ## Configuration Scopes:
 * **Notebook Level:** The access lasts only as long as the notebook is attached to the cluster.
 * **Cluster Level:** The config is added to the cluster settings, so every notebook on that cluster can access the data automatically.
+  (Not widly use approach, different roles cant use the same cluster if the only need specefic access to data
 
 ---
 
