@@ -44,11 +44,6 @@ This is the standard for production but can be confusing. Think of a **Service P
 * **Directory (Tenant) ID:** The ID of your specific Azure account/office.
 * **Client Secret:** The "Password" for the robot.
 
-### Configuration Scopes:
-* **Notebook Level:** The access lasts only as long as the notebook is attached to the cluster.
-* **Cluster Level:** The config is added to the cluster settings, so every notebook on that cluster can access the data automatically.
-
----
 
 ## 4. Azure Active Directory (AAD) Passthrough
 This method uses your own Azure credentials. When you run a command in a notebook, Databricks "passes" your identity to the storage account to check if you personally have permission to see the data.
@@ -66,7 +61,13 @@ This is the modern, "no-code" way to manage security.
 ## 6. How to Connect: The ABFS Driver
 Databricks uses the **ABFS (Azure Blob File System)** driver to talk to ADLS Gen2. It is optimized for big data and runs over HTTPS.
 
+---
 
+## Configuration Scopes:
+* **Notebook Level:** The access lasts only as long as the notebook is attached to the cluster.
+* **Cluster Level:** The config is added to the cluster settings, so every notebook on that cluster can access the data automatically.
+
+---
 
 ### The URI (Address) Format:
 To point Spark to your data, use this specific format:
