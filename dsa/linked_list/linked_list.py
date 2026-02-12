@@ -68,7 +68,7 @@ class LinkedList:
         self.lenght += 1
         return True
 
-    def pop_first(self) -> Optional[Any]:
+    def pop_first(self) -> Optional[Node]:
         if self.lenght == 0:
             return None
         temp = self.head
@@ -79,10 +79,57 @@ class LinkedList:
             self.tail = None
         return temp
 
-    def get(self, index):
-        if self.lenght < 0 or index >= self.lenght:
+    def get(self, index: int) -> Opitional[Node]:
+        if index < 0 or index >= self.lenght:
             return None
         temp = self.head
         for _ in range(index):
             temp = temp.next
         return temp
+
+    def set_value(self, index: int, value: Any) -> bool:
+        temp = self.get(index)
+        if temp:
+            temp.value = value
+            return True
+        return False
+
+    def insert(self, index: int, value: Any) -> bool:
+        if index < 0 or index > self.lenght:
+            return False
+        if index == 0:
+            return self.preappend(value)
+        if index == self.lenght:
+            return self.append(value)
+        new_node = Node(value)
+        pre = self.get(index - 1)
+        new_node.next = pre.next
+        pre.next = new_node
+        self.lenght += 1
+        return True
+
+    def remove(self, index: int) -> Node:
+        if index < 0 or index >= self.lenght:
+            return None
+        if index == 0:
+            return self.pop_first()
+        if index == (self.lenght - 1):
+            return self.pop()
+        pre = self.get(index - 1)
+        temp = pre.next
+        pre.next = temp.next
+        temp.next = None
+        self.lenght -= 1
+        return temp
+
+    def reverse(self) -> None:
+        temp = self.head
+        self.head = self.tail
+        self.tail = temp
+        after = temp.next
+        before = None
+        for _ in range(self.lenght):
+            after = temp.next
+            temp.next = before
+            before = temp
+            temp = after
