@@ -1,0 +1,140 @@
+{
+  "icon_theme": "Warm Charmed Icons",
+
+  "theme": "Ayu Dark",
+
+  "theme_overrides": {
+    "Ayu Dark": {
+      "editor.document_highlight.read_background": "#00000000",
+      "editor.document_highlight.write_background": "#00000000",
+
+      "editor.background": "#0A0E14",
+      "editor.gutter.background": "#0A0E14",
+      "elevated_surface.background": "#0A0E14",
+
+      "border.variant": "#0A0E14",
+      "border": "#0A0E14",
+
+      "title_bar.background": "#0A0E14",
+      "panel.background": "#0A0E14",
+      "panel.focused_border": "#E6B450",
+
+      "players": [
+        {
+          "cursor": "#F29718"
+        }
+      ],
+
+      "syntax": {
+        "comment": {
+          "font_style": "italic",
+          "color": "#5C6773"
+        },
+        "comment.doc": {
+          "font_style": "italic",
+          "color": "#5C6773"
+        }
+      },
+
+      "status_bar.background": "#0A0E14",
+      "status_bar.foreground": "#E6E1CF",
+
+      "status_bar.mode_indicator.background": "#0A0E14",
+      "status_bar.mode_indicator.foreground": "#E6E1CF",
+      "status_bar.mode_indicator.font_style": "bold",
+
+      "status_bar.mode_indicator.normal": "#E6B450",
+      "status_bar.mode_indicator.insert": "#39BAE6",
+      "status_bar.mode_indicator.visual": "#FF8F40"
+    }
+  },
+
+  "title_bar": {
+    "show_onboarding_banner": false,
+    "show_user_menu": false
+  },
+
+  "tab_bar": {
+    "show": false
+  },
+
+  "toolbar": {
+    "quick_actions": false
+  },
+
+  "status_bar": {
+    "experimental.show": true,
+    "show_vim_mode": true,
+    "show_git_branch": false,
+    "show_file_type": false,
+    "show_file_size": false,
+    "show_line_col": false,
+    "show_indent_style": false,
+    "show_encoding": false
+  },
+
+  "project_panel": {
+    "dock": "right",
+    "default_width": 400,
+    "git_status": false
+  },
+
+  "file_finder": {
+    "modal_max_width": "large"
+  },
+
+  "scrollbar": {
+    "show": "never"
+  },
+
+  "gutter": {
+    "min_line_number_digits": 0,
+    "folds": false,
+    "runnables": false
+  },
+
+  "vim_mode": true,
+  "tab_size": 2,
+  "show_completions_on_input": false,
+
+  "horizontal_scroll_margin": 1,
+  "vertical_scroll_margin": 1,
+  "when_closing_with_no_tabs": "keep_window_open",
+  "close_on_file_delete": true,
+  "restore_on_file_reopen": false,
+  "restore_on_startup": "empty_tab",
+
+  "session": {
+    "restore_unsaved_buffers": false
+  },
+
+  "centered_layout": {
+    "right_padding": 0.15,
+    "left_padding": 0.15
+  },
+
+  "wsl_connections": [
+    {
+      "distro_name": "Ubuntu-24.04",
+      "user": null,
+      "projects": []
+    }
+  ],
+
+  "telemetry": {
+    "diagnostics": false,
+    "metrics": false
+  },
+
+  "ui_font_family": "JetBrainsMono Nerd Font",
+  "buffer_font_family": "JetBrainsMono Nerd Font",
+
+  "terminal": {
+    "font_family": "JetBrainsMono Nerd Font",
+    "font_size": 13
+  },
+
+  "ui_font_size": 14,
+  "buffer_font_size": 13
+}
+
