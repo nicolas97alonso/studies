@@ -1,4 +1,4 @@
-from .ll import LinkedList, Node
+from src.linked_list.ll import LinkedList, Node
 
 
 def find_middle_node(ll: LinkedList) -> Node:
@@ -11,7 +11,7 @@ def find_middle_node(ll: LinkedList) -> Node:
     return slow
 
 
-def has_loop(ll: LinkedList) -> Node:
+def has_loop(ll: LinkedList) -> bool:
     slow = ll.head
     fast = ll.head
 
@@ -23,28 +23,47 @@ def has_loop(ll: LinkedList) -> Node:
     return False
 
 
-# TODO: Investigate unnit test
+def find_kth_from_end(ll, k) -> Node | None:
+    if not ll.head:
+        return None
+    slow = ll.head
+    fast = ll.head
 
-if __name__ == "__main__":
-    ll = LinkedList()
-    ll.append(2)
-    ll.append(3)
-    ll.append(2)
-    ll.print_list()
-    print("----------")
-    print("find_middle_node_test")
-    print(find_middle_node(ll).value)
-    print("----------")
-    ll.append(4)
-    ll.print_list()
-    print("----------")
-    print("find_middle_node_test")
-    print(find_middle_node(ll).value)
-    print("----------")
-    print("has_loop_test")
-    ll2 = LinkedList()
-    ll2.append(2)
-    ll2.append(3)
-    ll2.append(4)
-    ll2.tail = ll2.head
-    print(has_loop(ll2))
+    for _ in range(k):
+        fast = fast.next
+        if not fast:
+            return None
+
+    while fast:
+        slow = slow.next
+        fast = fast.next
+
+    return slow
+
+
+def delete_duplicates(ll) -> bool | None:
+    if not ll.head:
+        return None
+
+    slow = ll.head
+
+    while slow:
+        prev = slow
+        fast = slow.next
+
+        while fast:
+            if fast.value == slow.value:
+
+                to_delete = fast
+
+                prev.next = fast.next
+                fast = prev.next
+
+                to_delete.next = None
+            else:
+                prev = fast
+                fast = fast.next
+
+        slow = slow.next
+
+    return True
