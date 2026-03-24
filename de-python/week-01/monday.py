@@ -15,3 +15,21 @@
 # Download the raw file and save it as run_results.json in this folder
 
 # Your code below:
+
+from utils.utils import Config
+
+from pathlib import Path
+import requests
+import os
+
+cd = os.getcwd()
+config_yml_name = "config/config.yml"
+config_path = Path(cd, config_yml_name)
+
+config = Config(config_path)
+
+response = requests.get(config.json_url)
+data = response.json()
+
+for key in data:
+    print(key)
