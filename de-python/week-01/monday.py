@@ -16,20 +16,28 @@
 
 # Your code below:
 
-from utils.utils import Config
+from utils.utils import Config, download_json
 
 from pathlib import Path
-import requests
 import os
+import json
+
+CONFIG_YML_NAME = "config/config.yml"
+FILES_PATH = "files"
+OUTPUT_FILE_NAME = "data.json"
 
 cd = os.getcwd()
-config_yml_name = "config/config.yml"
-config_path = Path(cd, config_yml_name)
 
+config_path = Path(cd, CONFIG_YML_NAME)
 config = Config(config_path)
 
-response = requests.get(config.json_url)
-data = response.json()
+file_url = config.json_url
+data_file_path = Path(cd, FILES_PATH, OUTPUT_FILE_NAME)
+
+download_json(file_url, data_file_path)
+
+with open(data_file_path, "r") as f:
+    data = json.load(f)
 
 for key in data:
     print(key)
