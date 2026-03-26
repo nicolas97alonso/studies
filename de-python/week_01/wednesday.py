@@ -23,9 +23,9 @@ from pathlib import Path
 import os
 
 
-def parse_dbt_results(dbt_resuts_dict: dict) -> list:
+def parse_dbt_results(dbt_results_dict: dict) -> list:
 
-    dbt_results = dbt_resuts_dict.get("results")
+    dbt_results = dbt_results_dict.get("results")
     result = []
     for i in dbt_results:
         result.append(
