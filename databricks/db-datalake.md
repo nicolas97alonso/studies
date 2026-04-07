@@ -1,89 +1,92 @@
-# Databricks: Accessing Azure Data Lake Storage (ADLS)
+---
+tags: [databricks, azure, adls, storage, authentication]
+aliases: [ADLS, Azure Data Lake, Data Lake Storage]
+---
+
+# Accessing Azure Data Lake Storage (ADLS)
 
 ## 1. Azure Storage Fundamentals
 
-### What is a Data Lake?
-A **Data Lake** is a central repository that allows you to store all your data (structured, semi-structured, and unstructured) at any scale. Unlike traditional databases, you don't need to transform the data before saving it; you store it in its raw format and apply structure only when you read it ("Schema-on-read").
+### Data Lake
+A central repository for all data types (structured, semi-structured, unstructured) at any scale. Data is stored in raw format; structure is applied on read — **Schema-on-Read**.
 
-### What is a Storage Account?
-An **Azure Storage Account** is a container that groups all of your Azure Storage services together (Blobs, Files, Queues, Tables). It provides a unique namespace for your data and is the basic building block for storage in Azure.
+### Storage Account
+Groups all Azure Storage services together (Blobs, Files, Queues, Tables). Provides a unique namespace and is the basic building block for storage in Azure.
 
-### What is Azure Data Lake Storage (ADLS) Gen2?
-**ADLS Gen2** is essentially Azure Blob Storage with a "Big Data" upgrade. 
-* **Hierarchical Namespace:** This is the killer feature. It allows the storage to have a real folder structure (directories). In standard blob storage, folders are just "faked" by long filenames. In Gen2, folders are real, which makes Spark jobs significantly faster when moving or deleting data.
+### ADLS Gen2
+Azure Blob Storage with a "Big Data" upgrade.
+- **Hierarchical Namespace:** Real folder structure (not just long filenames faking folders like standard Blob). This makes Spark jobs significantly faster for operations like rename/delete.
 
-### What is a Container?
-A **Container** is like a "root folder" or a drive partition within your storage account. You must create at least one container before you can upload any files or folders.
+### Container
+A "root folder" or partition within a storage account. You must create at least one container before uploading files.
 
 ---
 
 ## 2. Authentication Methods
 
-### A. Storage Access Key (The "Master Key")
-Each storage account comes with two 512-bit access keys.
-* **Permissions:** Full control (Super User). If someone has this, they have the keys to the kingdom.
-* **Best Practice:** Use **Azure Key Vault** to store these keys so they aren't visible in your code.
-* **Spark Configuration:**
+### A. Storage Access Key ("Master Key")
+Each storage account has two 512-bit access keys.
+- **Permissions:** Full control — if someone has this, they have the keys to the kingdom.
+- **Best Practice:** Store in **Azure Key Vault** (see [[db-secrets]]) so they never appear in notebook code.
+- **Spark Config:**
   ```python
   spark.conf.set(
-    "fs.azure.account.key.<storage-account-name>.dfs.core.windows.net", 
-    "<access-key>"
+      "fs.azure.account.key.<storage-account>.dfs.core.windows.net",
+      "<access-key>"
   )
+  ```
 
-### B. Shared Access Signature (SAS Token)
-A **SAS token** is a string that provides limited, temporary access to your storage resources.
-* **Granularity:** You can set an expiration date and choose exactly what the user can do (e.g., "Read only" for the next 2 hours).
+### B. SAS Token (Shared Access Signature)
+A string that grants limited, temporary access.
+- Set an expiration date and specific permissions (e.g., "Read only for 2 hours").
+- Good for sharing access with external parties without exposing the master key.
 
----
+### C. Service Principal ("Robot User")
+The standard for production environments. Think of it as a dedicated service account for your Databricks cluster.
 
-## 3. The "Service Principal" (App Registration)
-This is the standard for production but can be confusing. Think of a **Service Principal** as a "Robot User" for your Databricks cluster.
+| Field | What it is |
+| :--- | :--- |
+| **Application (Client) ID** | The "Username" of the robot |
+| **Directory (Tenant) ID** | Your Azure account/tenant ID |
+| **Client Secret** | The "Password" of the robot |
 
-### The ID Cheat Sheet:
-* **Application (Client) ID:** The "Username" for the robot.
-* **Directory (Tenant) ID:** The ID of your specific Azure account/office.
-* **Client Secret:** The "Password" for the robot.
+> Store the Client Secret in [[db-secrets\|Azure Key Vault]], never hardcoded.
 
+### D. AAD Passthrough
+Uses your own Azure Active Directory credentials. Databricks "passes" your identity to the storage account — access is controlled by your personal RBAC permissions, not shared credentials.
 
-## 4. Azure Active Directory (AAD) Passthrough
-This method uses your own Azure credentials. When you run a command in a notebook, Databricks "passes" your identity to the storage account to check if you personally have permission to see the data.
-
----
-
-## 5. Unity Catalog
-This is the modern, "no-code" way to manage security.
-* Instead of mounting drives or using secrets in notebooks, you define a **Storage Credential** in Unity Catalog.
-* Users are granted access via SQL commands (e.g., `GRANT READ ON...`).
-* The cluster handles the "handshake" with Azure automatically.
-
----
-
-## 6. How to Connect: The ABFS Driver
-Databricks uses the **ABFS (Azure Blob File System)** driver to talk to ADLS Gen2. It is optimized for big data and runs over HTTPS.
+### E. Unity Catalog (Modern Approach)
+Define a **Storage Credential** in Unity Catalog and grant access via SQL:
+```sql
+GRANT READ ON STORAGE CREDENTIAL my_credential TO `user@company.com`;
+```
+No credential management in notebooks. The cluster handles the handshake automatically. **Preferred for new workspaces.**
 
 ---
 
-## Configuration Scopes:
-* **Notebook Level:** The access lasts only as long as the notebook is attached to the cluster.
-* **Cluster Level:** The config is added to the cluster settings, so every notebook on that cluster can access the data automatically.
-  (Not widly use approach, different roles cant use the same cluster if the only need specefic access to data
-  Go to cluster, edit, in the spark set up, use (key value) key separated by space then value
+## 3. Connecting: The ABFS Driver
+
+Databricks uses the **ABFS (Azure Blob File System)** driver to communicate with ADLS Gen2 over HTTPS.
+
+### URI Format
+```
+abfss://<container>@<storage-account>.dfs.core.windows.net/<path>/
+```
+- **`abfss`** — the `s` = Secure (SSL/TLS encrypted)
+- **`dfs`** — uses the Data Lake Gen2 endpoint (not the legacy Blob endpoint)
 
 ---
 
-### The URI (Address) Format:
-To point Spark to your data, use this specific format:
-`abfss://<container-name>@<storage-account-name>.dfs.core.windows.net/<folder-path>/`
+## 4. Configuration Scopes
 
-* **abfss:** The "s" stands for **Secure** (SSL/TLS).
-* **dfs:** This tells Azure you are using the **Data Lake (Gen2)** endpoint, not the old Blob endpoint.
+| Scope | Behavior |
+| :--- | :--- |
+| **Notebook-level** | Access lasts only while the notebook is attached to the cluster |
+| **Cluster-level** | Added to Spark config; every notebook on that cluster inherits access. Not recommended when different teams need different access levels. |
+| **Unity Catalog** | Access governed by SQL grants — no per-cluster or per-notebook config needed |
 
 ---
 
-> **Pro-Tip:** If you're getting "403 Forbidden" errors, 90% of the time it's because the Service Principal hasn't been given the **"Storage Blob Data Contributor"** role in the Azure Portal!
+> **Tip:** Getting `403 Forbidden`? 90% of the time the Service Principal is missing the **"Storage Blob Data Contributor"** role in the Azure Portal IAM settings.
 
-
-
-
-
-
+> Related: [[db-secrets]] (storing credentials), [[db-dbfs]] (legacy mount approach), [[db-sparksql]] (querying data via SQL)

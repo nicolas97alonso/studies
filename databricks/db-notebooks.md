@@ -1,61 +1,125 @@
-### Notebooks
-Interactive way to execute code, by defaoult is python language, it needs to be atached to a cluster
+---
+tags: [databricks, notebooks, development, dbutils]
+aliases: [Databricks Notebooks, Magic Commands, dbutils]
+---
 
-## Magic commands
+# Databricks Notebooks
 
-%python, %sql, % scala Change language
-%md Markdown file
-%fs Run file system commands
-%sh Run shell command (only on driver)
-%pip pip install libs
-%run include import other notebooks into current 
+Notebooks are the primary interactive development environment in Databricks. Each notebook is attached to a cluster and executes code cell by cell. Default language is Python, but you can switch per cell.
 
-OS filesystem
-This is the local disk of the driver machine in your cluster.
-It works like any normal Linux computer.
-Commands like cd, ls, and cat operate here.
+---
 
-DBFS (Databricks File System)
-This is Databricks’ virtual filesystem that sits on top of cloud storage (S3, ADLS, GCS).
-It’s shared across the whole cluster and persists even when the cluster shuts down.
-It uses paths like dbfs:/mnt/....
+## Magic Commands
 
-Python environment
-This is the Python runtime that your notebooks use.
-It’s separate from the OS-level Python installation.
-Packages installed with %pip go here so your notebook can import them.
+Magic commands change the behavior or language of a single cell. They start with `%`.
 
+| Command | Purpose |
+| :--- | :--- |
+| `%python` | Run the cell as Python |
+| `%sql` | Run the cell as Spark SQL |
+| `%scala` | Run the cell as Scala |
+| `%r` | Run the cell as R |
+| `%md` | Render the cell as Markdown |
+| `%fs` | Run DBFS file system commands (wraps `dbutils.fs`) |
+| `%sh` | Run shell commands on the **Driver** node only |
+| `%pip` | Install Python packages into the notebook environment |
+| `%run` | Execute another notebook and import its variables/functions |
 
-To import modeuls you can use relative path with ./path 
-or use ../path if you want to move back in folders
+---
 
-?? What is the dbfs so my data is stored in there , and data bricks partion there and use sql on top ???? im confused with that
+## The Three Environments
 
-## Databricks Utilities 
+Understanding what each environment is helps avoid confusion:
 
-Only can run python, scala or R cells
-More flesible then magic commands 
+| Environment | What it is | Example paths |
+| :--- | :--- | :--- |
+| **OS Filesystem** | Local disk of the Driver VM. Works like a normal Linux machine. | `/tmp/`, `/home/` |
+| **DBFS** | Virtual filesystem backed by cloud storage (ADLS, S3). Shared across the cluster and persists after shutdown. | `dbfs:/mnt/raw/`, `/mnt/raw/` |
+| **Python Environment** | The Python runtime your notebook runs in. Packages installed with `%pip` live here. | `import pandas` |
 
-### File System Utilities 
-dbutils.fs.ls('/') display the files like ls 
-display() can display or pase the python list into a proper table 
+> **Rule of thumb:** Use DBFS (`/mnt/...`) for data files you want to persist. Use the OS filesystem only for temp files needed during a single run.
 
-Example:
+---
 
-items = dbitils.fs.ls('/databricks-datasets/')
-folder_count = len(item for item in items if item.name.endswith("/")
-file_count = len(item for item in items if not  item.name.endswith("/")
+## Importing Other Notebooks
 
+```python
+# Relative path (same folder)
+%run ./utils
 
-### Secrete Utilities 
+# Move up a folder
+%run ../shared/config
+```
 
-### Widget Utilities
+After `%run`, all variables and functions defined in the called notebook are available in the current one.
 
-### Notebook ststen ubilities
+---
 
-* View all utilities = dbutils.help()
-dbututils.fs.help()
+## Databricks Utilities (`dbutils`)
 
-Magic Command vs Utilities 
+`dbutils` is a Python object pre-loaded in every notebook. It provides utilities for working with files, secrets, and widgets — things you can't easily do with magic commands alone.
 
-Magic command for quick adhock, utilities for parametrazation and production tuntime execution, programatically use case 
+```python
+dbutils.help()           # list all utility groups
+dbutils.fs.help()        # list file system commands
+```
+
+### File System Utilities (`dbutils.fs`)
+
+```python
+dbutils.fs.ls("/mnt/raw/")           # list files and folders
+dbutils.fs.mkdirs("/mnt/raw/new/")   # create a directory
+dbutils.fs.cp("source", "dest")      # copy a file
+dbutils.fs.rm("path", recurse=True)  # delete (recurse for folders)
+```
+
+`display()` renders the list as a formatted table instead of raw Python output:
+
+```python
+items = dbutils.fs.ls("/databricks-datasets/")
+display(items)
+
+# Count folders vs files
+folder_count = len([i for i in items if i.name.endswith("/")])
+file_count   = len([i for i in items if not i.name.endswith("/")])
+```
+
+### Secrets Utilities (`dbutils.secrets`)
+
+```python
+# Retrieve a secret (value is redacted in output)
+password = dbutils.secrets.get(scope="my-scope", key="db-password")
+```
+
+> See [[db-secrets]] for how to set up Secret Scopes.
+
+### Widget Utilities (`dbutils.widgets`)
+
+Widgets create interactive input controls in the notebook UI — useful for parameterizing notebooks used as jobs.
+
+```python
+dbutils.widgets.text("environment", "dev", "Environment")
+env = dbutils.widgets.get("environment")
+```
+
+### Notebook Utilities (`dbutils.notebook`)
+
+```python
+# Run another notebook and capture its return value
+result = dbutils.notebook.run("./child-notebook", timeout_seconds=60, arguments={"key": "value"})
+```
+
+---
+
+## Magic Commands vs. `dbutils`
+
+| Use Case | Choose |
+| :--- | :--- |
+| Quick, one-off file browsing or SQL query | Magic command (`%fs`, `%sql`) |
+| Parameterized, reusable, production code | `dbutils` |
+| Passing values between notebooks | `dbutils.notebook.run()` |
+| Installing packages | `%pip install ...` |
+
+---
+
+> Related: [[db-spark]] (SparkSession in notebooks), [[db-dbfs]] (DBFS mounts), [[db-secrets]] (using secrets in notebooks)

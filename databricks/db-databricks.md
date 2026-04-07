@@ -1,85 +1,92 @@
-# Databricks Architecture & Clusters: Study Guide
+---
+tags: [databricks, architecture, clusters]
+aliases: [Databricks Architecture, Clusters]
+---
 
-## 1. Databricks High-Level Architecture
-Databricks operates using a "split-plane" architecture to ensure security and scalability.
+# Databricks Architecture & Clusters
 
-### A. The Control Plane
+## 1. High-Level Architecture
+Databricks uses a **split-plane** architecture to separate management from processing.
+
+### A. Control Plane
 *Managed by Databricks in their own cloud account.*
-* **Web UI:** The interface for workspace management, notebook authoring, and dashboarding.
-* **Compute Orchestration:** The "Cluster Manager" that provisions and manages the lifecycle of compute resources.
-* **Unity Catalog:** Centralized data governance (security, auditing, and lineage).
-* **Workspace Assets:** Storage for notebooks, saved queries, and code metadata.
+- **Web UI:** Workspace management, notebook authoring, and dashboarding.
+- **Compute Orchestration:** The Cluster Manager that provisions and manages VM lifecycles.
+- **Unity Catalog:** Centralized data governance (security, auditing, lineage).
+- **Workspace Assets:** Storage for notebooks, saved queries, and code metadata.
 
-### B. The Compute Plane (Data Plane)
+### B. Compute Plane (Data Plane)
 *Where your data processing actually happens.*
-* **Classic Compute:** Resides in the **Customer’s Cloud Subscription**. You manage the VPC/VNet and the Virtual Machines.
-* **Serverless Compute:** Resources are managed by Databricks. They are "always-on" (low idle time), utilize an instant resource pool, and are automatically configured and scaled by AI.
+- **Classic Compute:** Runs in the **customer's** cloud subscription. You manage the VPC/VNet and VMs.
+- **Serverless Compute:** Managed by Databricks — always-on, instant resource pool, AI-autoscaled.
 
 ---
 
-## 2. Databricks Clusters
-A cluster is a set of Virtual Machines (VMs) working together as a single computational unit.
+## 2. Clusters
+A cluster is a set of VMs working together as a single computational unit.
 
-### Cluster Topology
-* **Driver Node:** The master node. It maintains state, responds to user queries, and distributes work.
-* **Worker Nodes:** The processing units. They run the Spark Executors and perform the actual data tasks.
+### Topology
+- **Driver Node:** The master node. Maintains state, responds to user queries, distributes work.
+- **Worker Nodes:** Run the Spark Executors and perform the actual data processing.
+
+> See [[db-spark]] for a deep dive into how Spark uses this topology.
 
 ---
 
 ## 3. Cluster Types (Classic Compute)
 
-| Feature | **All-Purpose Cluster** | **Job Cluster** |
+| Feature | All-Purpose Cluster | Job Cluster |
 | :--- | :--- | :--- |
 | **Primary Use** | Interactive analysis & development | Automated production pipelines |
-| **Workflow** | Created manually; persistent | Created/terminated by a specific Job |
-| **Cost** | Higher DBU cost | Lower (Discounted) DBU cost |
-| **Sharing** | Shared among multiple users | Isolated to a single automated task |
+| **Lifecycle** | Created manually; persistent | Created/terminated by a specific Job |
+| **Cost** | Higher DBU cost | Lower (discounted) DBU cost |
+| **Sharing** | Shared among multiple users | Isolated to one automated task |
 
 ---
 
-## 4. Configuration Essentials
+## 4. Configuration
 
 ### Node Types
-* **Multi-node:** 1 Driver + $n$ Workers. Ideal for large-scale, parallelized workloads.
-* **Single-node:** 1 Driver only. Best for lightweight analytics, small data, or non-distributed libraries (e.g., standard Python/R).
+- **Multi-node:** 1 Driver + N Workers. For large-scale, parallelized workloads.
+- **Single-node:** Driver only. For lightweight analytics, small datasets, or non-distributed libraries.
 
 ### Access Modes
-* **Single User:** Dedicated to one specific individual.
-* **Shared:** Multiple users can run code simultaneously with secure isolation.
-* **No Isolation Shared:** Legacy mode; high performance but lacks security boundaries between users.
+- **Single User:** Dedicated to one individual.
+- **Shared:** Multiple users with secure isolation between sessions.
+- **No Isolation Shared:** Legacy mode — high performance but no security boundaries between users.
 
-### Advanced Features
-* **Databricks Runtime (DBR):** The core engine (Spark + optimized libraries). Use **Databricks ML** for pre-installed Machine Learning frameworks (PyTorch, TensorFlow).
-* **Autoscaling:** Specify a **Min** and **Max** number of workers. Databricks adds/removes workers based on real-time load.
-* **Auto-termination:** Automatically shuts down the cluster after a defined period of inactivity (idle time) to prevent unnecessary costs.
-* **Cluster Policies:** Admin-defined templates that enforce settings (e.g., restricting VM sizes) to control costs and complexity.
+### Key Features
+- **Databricks Runtime (DBR):** Core engine (Spark + optimized libraries). Use **Databricks ML** for pre-installed ML frameworks (PyTorch, TensorFlow).
+- **Autoscaling:** Set a Min/Max worker count; Databricks adds/removes workers based on load.
+- **Auto-termination:** Shuts down the cluster after a defined idle period to prevent runaway costs.
+- **Cluster Policies:** Admin-defined templates that enforce settings (e.g., restricting VM sizes).
 
 ---
 
 ## 5. Cluster Pools
-**The Problem:** Waiting for cloud providers to boot up VMs (usually 3–7 minutes).
-**The Solution:** **Pools.**
-* Pools maintain a small "warm" set of idle VM instances.
-* When a cluster starts, it pulls from the pool, reducing startup time to seconds.
-* You can set a "Min Idle" (e.g., 1–2 VMs) to ensure instant availability.
+**Problem:** Cloud providers take 3–7 minutes to boot VMs.  
+**Solution:** Pools maintain a small set of warm, idle VM instances. When a cluster starts, it pulls from the pool — startup drops to seconds.
+
+Set a **Min Idle** of 1–2 VMs to guarantee instant availability.
 
 ---
 
 ## 6. Pricing & DBU Calculation
 Databricks costs are measured in **DBUs (Databricks Units)**.
 
-### Total Cost Formula
-The total cost of a cluster involves two separate bills:
-1.  **Databricks Software Cost:** $(\text{Total DBUs} \times \text{Price based on Workload/Tier})$
-2.  **Cloud Infrastructure Cost:** $(\text{Driver VM Cost} + \sum \text{Worker VM Costs})$
+### Total Cost
+Two separate bills:
+1. **Databricks Software:** `Total DBUs × Price (based on Workload/Tier)`
+2. **Cloud Infrastructure:** `Driver VM Cost + Σ Worker VM Costs`
 
-### Cost Variables
-* **Workload Type:** SQL and Jobs are generally cheaper than All-Purpose.
-* **VM Instance Type:** * *Memory Optimized:* For heavy joins/shuffles.
-    * *Compute Optimized:* For complex transformations.
-    * *Storage Optimized:* High I/O / Caching.
-    * *GPU Accelerated:* Deep Learning.
+### VM Types
+| Type | Best For |
+| :--- | :--- |
+| Memory Optimized | Heavy joins / shuffles |
+| Compute Optimized | Complex transformations |
+| Storage Optimized | High I/O / caching |
+| GPU Accelerated | Deep Learning |
 
 ---
 
-> **Pro-Tip:** To optimize costs, always set an **Auto-termination** timeout of 20–30 minutes for All-Purpose clusters and use **Job Clusters** for anything that can be scheduled!
+> **Tip:** Always set **auto-termination** (20–30 min) on All-Purpose clusters and use **Job Clusters** for anything schedulable.
