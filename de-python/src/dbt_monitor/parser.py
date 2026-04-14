@@ -16,5 +16,4 @@ def parse_dbt_results(dbt_results_dict: dict) -> list[dict]:
                     "seconds": round(i.get("execution_time"), 2),
                 }
             )
-    print(result)
     return result
