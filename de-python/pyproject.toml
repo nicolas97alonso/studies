@@ -9,3 +9,13 @@ dependencies = [
     "pyyaml>=6.0.3",
     "requests>=2.33.1",
 ]
+
+[build-system]                          # ← add this
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]         # ← and this
+where = ["src"]
+
+[tool.uv]
+package = true

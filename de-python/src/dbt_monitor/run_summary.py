@@ -11,7 +11,7 @@ def run_summary(file_name: str) -> dict | None:
     Prints a summary of the failed results of a given dbt run
     """
 
-    config_yml_path = Path("config", "config.yml")
+    config_yml_path = Path("config", "config.yml")  # TODO: This is ok? hardcoded? src?
 
     cd = os.getcwd()
 
