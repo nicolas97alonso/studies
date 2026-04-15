@@ -34,9 +34,11 @@ def load_json_data(file_path: str | Path):
     return data
 
 
-def print_dict(result_dict: dict) -> None:
+def print_dict(result_dict: dict, indent=0) -> None:
     for key, value in result_dict.items():
-        if isinstance(value, dict):
+        if isinstance(value, list):
             print(f"{key} =")
+            for i in value:
+                print_dict(i, 1)
         else:
-            print(f"{key} = {value}")
+            print(f"{'\t' * indent}{key} = {value}")
