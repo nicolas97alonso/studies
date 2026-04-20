@@ -146,3 +146,78 @@ def process_batch(batch_df, batch_id):
 ---
 
 > Related: [[db-autoloader]] (file-based streaming ingestion), [[db-dlt]] (declarative streaming pipelines), [[db-delta]] (Delta as a streaming sink/source)
+
+---
+
+## 10. Stream-Static vs. Stream-Stream Joins
+
+### Stream-Static Join (Common Pattern)
+Join a streaming DataFrame with a static lookup table. The static side is loaded once and broadcast.
+
+```python
+# Static lookup table
+customers_static = spark.read.table("silver.customers")
+
+# Streaming events
+events_stream = spark.readStream.format("delta").table("bronze.events")
+
+# Join — stream-static, no watermark needed
+enriched = events_stream.join(customers_static, "customer_id")
+
+enriched.writeStream.format("delta").option("checkpointLocation", "...").toTable("silver.enriched_events")
+```
+
+> [!tip] Stream-static joins don't require watermarks. The static table is broadcast to executors and joined at each micro-batch.
+
+### Stream-Stream Join
+Both sides are streams. Requires watermarks to bound the state size.
+
+```python
+clicks = (spark.readStream.format("delta").table("bronze.clicks")
+    .withWatermark("click_time", "10 minutes"))
+
+impressions = (spark.readStream.format("delta").table("bronze.impressions")
+    .withWatermark("impression_time", "20 minutes"))
+
+joined = clicks.join(
+    impressions,
+    expr("click_ad_id = impression_ad_id AND "
+         "click_time BETWEEN impression_time AND impression_time + INTERVAL 1 HOUR")
+)
+```
+
+> [!warning] Stream-stream joins are stateful — Spark must buffer events waiting for a match. Always use watermarks to bound state size, otherwise memory grows unbounded.
+
+---
+
+## 11. Streaming vs. Batch: When to Use Each
+
+| Scenario | Recommendation | Why |
+|:---|:---|:---|
+| New files land hourly, processed once an hour | **Batch or `availableNow=True`** | No need for always-on stream |
+| New files land continuously, need < 5 min latency | **Auto Loader streaming** | Incremental as files arrive |
+| Need < 1 min latency | **DLT Continuous or Kafka + Structured Streaming** | Sub-minute requires always-on processing |
+| Aggregated daily report | **Batch job** | Full recalculation is simpler, more accurate |
+| CDC feed (Kafka/Kinesis) | **Structured Streaming or DLT APPLY CHANGES** | Continuous event processing |
+
+> [!important] Exam trap: "incremental" ≠ "streaming"
+> `trigger(availableNow=True)` is **incremental but batch** — it processes new data and stops. True streaming runs continuously. Both process only new data; only streaming runs forever.
+
+---
+
+## 12. Practice Questions
+
+**Q1.** A streaming query writes to Delta with `outputMode("complete")`. The query is `GROUP BY product` summing revenue. After 3 micro-batches, what is in the output table?
+> **Answer:** One row per product with the **total revenue from all batches combined** — the entire result table is rewritten from scratch each trigger. `complete` mode rewrites all rows, not just new ones.
+
+**Q2.** You have `outputMode("append")` with a `groupBy().count()` aggregation and no watermark. Will this work?
+> **Answer:** No — `append` mode with aggregation requires watermarks. Without a watermark, Spark can't know when aggregation results are final. Use `complete` or `update` mode for aggregations.
+
+**Q3.** A streaming query fails mid-run. On restart, will any data be processed twice?
+> **Answer:** No — checkpointing ensures exactly-once semantics. Spark reads the checkpoint to find the last successfully committed offset and resumes from there.
+
+**Q4.** What is a watermark and why do you need one for windowed aggregations?
+> **Answer:** A watermark defines the maximum expected lateness of data. Without it, Spark must hold all window state forever waiting for late data. With a watermark, Spark can safely discard state for windows older than the watermark and emit results — essential for bounded memory usage.
+
+**Q5.** You need to write streaming data to both a Delta table AND a REST API. Which method handles this?
+> **Answer:** `foreachBatch` — it gives you each micro-batch as a static DataFrame and lets you write custom logic, including multiple sinks.

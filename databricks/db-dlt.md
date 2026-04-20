@@ -226,3 +226,115 @@ WHERE event_type = 'flow_progress';
 ---
 
 > Related: [[db-delta]] (Delta tables DLT writes to), [[db-autoloader]] (ingestion in DLT bronze layer), [[db-streaming]] (Structured Streaming underlying concepts), [[db-workflows]] (scheduling DLT pipelines)
+
+---
+
+## 9. APPLY CHANGES INTO (Change Data Capture)
+
+> [!important] Exam Priority: HIGH
+> `APPLY CHANGES INTO` is the DLT way to handle CDC streams (SCD Type 1 and Type 2). Know the syntax and the difference between the two types.
+
+DLT provides first-class support for applying Change Data Capture (CDC) from sources like Kafka, Kinesis, or Debezium.
+
+### SCD Type 1 (Upsert — keep only the latest version)
+
+```python
+import dlt
+from pyspark.sql.functions import col, expr
+
+@dlt.table(name="bronze_customers_cdc")
+def bronze_customers_cdc():
+    return spark.readStream.format("cloudFiles")...
+
+dlt.apply_changes(
+    target   = "silver_customers",
+    source   = "bronze_customers_cdc",
+    keys     = ["customer_id"],
+    sequence_by = col("updated_at"),
+    apply_as_deletes = expr("op = 'DELETE'"),
+    except_column_list = ["op", "_rescued_data"]
+)
+```
+
+### SCD Type 2 (Historical — keep all versions)
+
+```python
+dlt.apply_changes(
+    target   = "silver_customers_history",
+    source   = "bronze_customers_cdc",
+    keys     = ["customer_id"],
+    sequence_by = col("updated_at"),
+    apply_as_deletes = expr("op = 'DELETE'"),
+    stored_as_scd_type = 2          # ← this is the only difference
+)
+```
+
+SCD Type 2 automatically adds columns:
+
+| Column | Description |
+|:---|:---|
+| `__START_AT` | When this version became active |
+| `__END_AT` | When this version was superseded (`null` = current active row) |
+
+```sql
+-- SQL equivalent
+CREATE OR REFRESH STREAMING TABLE silver_customers;
+
+APPLY CHANGES INTO silver_customers
+FROM STREAM(LIVE.bronze_customers_cdc)
+KEYS (customer_id)
+SEQUENCE BY updated_at
+APPLY AS DELETE WHEN op = 'DELETE'
+IGNORE NULL UPDATES;
+```
+
+> [!tip] SCD Type 1 vs Type 2
+> **Type 1:** You only care about current state. Updates overwrite. Simpler, smaller table.
+> **Type 2:** You need full history. Every change creates a new row. Essential for auditing and point-in-time analysis.
+
+---
+
+## 10. DLT Table vs. DLT View
+
+> [!note] Exam distinction
+
+| Type | Stored? | Queryable outside pipeline? | Use for |
+|:---|:---|:---|:---|
+| `@dlt.table` | Yes — physical Delta table | Yes | Data consumers need to read it |
+| `@dlt.view` | No — virtual, computed each run | No | Intermediate transformations within the pipeline |
+
+```python
+# View — intermediate, not stored
+@dlt.view(name="filtered_events")
+def filtered_events():
+    return dlt.read("bronze_events").filter(col("status") != "test")
+
+# Table — stored as Delta, readable from outside
+@dlt.table(name="silver_events")
+def silver_events():
+    return dlt.read("filtered_events").select(...)
+```
+
+> [!tip] Use views for intermediate steps that don't need to be exposed to consumers. This reduces storage and compute costs.
+
+---
+
+## 11. Practice Questions
+
+**Q1.** A DLT pipeline has `@dlt.expect_or_fail("positive_amount", "amount > 0")`. A batch arrives with 5 rows having `amount = -1`. What happens?
+> **Answer:** The entire pipeline run **fails** (stops). `expect_or_fail` causes pipeline failure on ANY violation.
+
+**Q2.** What is the difference between `dlt.read()` and `dlt.readStream()` in a DLT pipeline?
+> **Answer:** `dlt.read()` performs a batch read (full snapshot) — use for Materialized Views. `dlt.readStream()` performs an incremental read (only new data since last run) — use for Streaming Tables.
+
+**Q3.** You want a DLT pipeline to process data as it arrives with < 1 minute latency. Which pipeline mode?
+> **Answer:** **Continuous** mode. Triggered mode runs once and stops; Continuous mode runs indefinitely.
+
+**Q4.** In SCD Type 2 with `APPLY CHANGES INTO`, what does `__END_AT` contain for the current active row?
+> **Answer:** `null`. A null `__END_AT` means this is the current active version. When the row is updated, `__END_AT` is set to the sequence value of the update, and a new row is inserted with `__END_AT = null`.
+
+**Q5.** What is the `sequence_by` parameter in `apply_changes` used for?
+> **Answer:** It specifies which column determines the order of changes — which row is "newer." DLT uses this to correctly apply updates and deletes even when events arrive out of order.
+
+**Q6.** How does cluster behavior differ between DLT Development and Production mode?
+> **Answer:** **Development:** cluster stays alive between runs (fast iteration, no retries on failure). **Production:** new cluster per run, automatic retries on failure, guarantees a clean environment.

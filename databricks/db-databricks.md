@@ -129,3 +129,62 @@ Total cloud cost      = Driver VM cost + Σ Worker VM costs (per hour)
 ---
 
 > Related: [[db-spark]] (Spark internals), [[db-workflows]] (Job Clusters in pipelines), [[db-unity-catalog]] (cluster access modes for UC)
+
+---
+
+## 8. Photon Engine Deep Dive
+
+Photon is a **vectorized query engine** written in C++ that replaces the standard JVM-based Spark engine for SQL and Delta operations.
+
+**How vectorized execution works:**
+- Standard Spark: processes one row at a time through JVM bytecode
+- Photon: processes a **batch of 1,000+ rows at once** using CPU SIMD instructions — like applying a formula to an entire spreadsheet column vs. one cell at a time
+
+**What Photon accelerates:**
+- SQL queries (SELECT, JOIN, GROUP BY, ORDER BY)
+- Delta OPTIMIZE and data writes
+- MERGE operations
+
+**What Photon does NOT accelerate:**
+- Arbitrary Python/Scala UDFs — these still go through JVM
+- ML training code
+
+> [!tip] Exam tip
+> Choose Photon runtime when your workload is primarily SQL/Delta operations. If you have heavy Python UDFs, the benefit is reduced.
+
+---
+
+## 9. Serverless Compute vs. Classic Compute
+
+| Feature | Classic Compute | Serverless Compute |
+|:---|:---|:---|
+| **VM management** | You manage VMs (size, config, VNet) | Databricks manages VMs |
+| **Startup time** | 3–7 minutes (VM boot) | Seconds (pre-warmed pool) |
+| **Autoscaling** | Supported but slow | Instant — scales within seconds |
+| **Network** | Your VNet | Databricks-managed network |
+| **Billing** | DBUs + cloud VM costs | DBUs only (VMs included) |
+| **Use case** | Custom network config, compliance | Fast ad-hoc queries, notebooks |
+
+> [!note] Serverless SQL Warehouse
+> The most common exam context for serverless is **Serverless SQL Warehouses** — used for Databricks SQL (BI queries). These start instantly vs. Classic SQL Warehouses that take 2–5 minutes.
+
+> [!tip] When the exam asks which is "faster to start": Serverless. When it asks about "custom network configuration": Classic.
+
+---
+
+## 10. Practice Questions
+
+**Q1.** A data engineering team runs ad-hoc exploration during business hours and scheduled ETL overnight. Which cluster type for each?
+> **Answer:** Ad-hoc exploration → **All-Purpose Cluster** (always on, interactive). Overnight ETL → **Job Clusters** (lower DBU rate, auto-terminate when done).
+
+**Q2.** A cluster is set to "No Isolation Shared" access mode. Can it use Unity Catalog row-level security?
+> **Answer:** No. Row/column-level security in Unity Catalog requires **Single User** or **Shared** access mode. No Isolation Shared has only partial UC support.
+
+**Q3.** What is the difference between DBR and DBR ML?
+> **Answer:** DBR ML includes everything in DBR plus pre-installed ML frameworks: PyTorch, TensorFlow, scikit-learn, XGBoost, and GPU drivers. Use DBR ML for machine learning workloads.
+
+**Q4.** Your team runs SQL dashboards that need to start immediately. Which configuration should you recommend?
+> **Answer:** **Serverless SQL Warehouse** — starts in seconds vs. 2–5 minutes for classic.
+
+**Q5.** Why does Photon improve SQL query performance but not Python UDF performance?
+> **Answer:** Photon is a vectorized C++ engine that processes batches of rows at the CPU level. Python UDFs run through the Python/JVM interpreter, which Photon cannot accelerate — those still execute row-by-row through Python.
