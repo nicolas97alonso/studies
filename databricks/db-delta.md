@@ -268,3 +268,116 @@ CREATE TABLE orders_backup DEEP CLONE orders;
 ---
 
 > Related: [[db-autoloader]] (streaming into Delta), [[db-dlt]] (Delta Live Tables pipelines), [[db-sparksql]] (SQL operations), [[db-streaming]] (Structured Streaming with Delta)
+
+---
+
+## 11. Data Skipping
+
+Delta automatically collects **min/max statistics** for each data file (up to 32 columns by default). When a query filters on a column, Delta reads these stats and skips files that can't contain matching rows — without opening them.
+
+**Example:** `WHERE date = '2024-06-15'`
+- Delta checks the `date` min/max for each file
+- Skips any file where `max_date < '2024-06-15'` or `min_date > '2024-06-15'`
+- Only reads files that _could_ contain the date
+
+> [!tip] Why Z-ORDER helps data skipping
+> Z-ORDER clusters rows with similar values into the same files. This narrows the min/max range per file, making data skipping dramatically more effective. Without Z-ORDER, min/max ranges overlap heavily across files.
+
+```sql
+-- See statistics collected
+DESCRIBE DETAIL orders;   -- shows numFiles, statistics columns
+```
+
+> [!note] Column limit
+> By default, Delta collects stats on the first 32 columns only. Move your filter columns to the front of the schema if you have many columns.
+
+---
+
+## 12. Liquid Clustering (Modern Alternative to Z-ORDER)
+
+**Problem with Z-ORDER + OPTIMIZE:** Full table rewrites are needed to maintain clustering. Expensive on large tables.
+
+**Liquid Clustering** is the modern solution: clustering is applied **incrementally** — only new/changed files are re-clustered, not the whole table.
+
+```sql
+-- Enable at table creation
+CREATE TABLE orders (
+  id     BIGINT,
+  date   DATE,
+  region STRING
+) USING DELTA
+CLUSTER BY (date, region);
+
+-- Enable on existing table
+ALTER TABLE orders CLUSTER BY (date, region);
+
+-- Then run OPTIMIZE as usual — Delta handles the rest
+OPTIMIZE orders;
+```
+
+| Feature | Z-ORDER | Liquid Clustering |
+|:---|:---|:---|
+| How it clusters | Full table rewrite | Incremental — only changed data |
+| Partition dependency | Can combine with partitioning | No partitioning needed |
+| Performance | Good | Better for large, frequently-updated tables |
+| Availability | GA | GA in DBR 13.3+ |
+
+> [!tip] Exam tip
+> Liquid Clustering is the **recommended approach** for new tables. Z-ORDER is still valid but requires more maintenance. If the exam asks about clustering for frequently-updated tables, Liquid Clustering is the better answer.
+
+---
+
+## 13. Generated Columns
+
+Columns whose value is automatically computed from other columns. Databricks stores them physically (like regular columns) and keeps them in sync on write.
+
+```sql
+CREATE TABLE events (
+  ts        TIMESTAMP,
+  date      DATE GENERATED ALWAYS AS (CAST(ts AS DATE)),
+  year      INT  GENERATED ALWAYS AS (YEAR(ts))
+) USING DELTA
+PARTITIONED BY (date);  -- partition on the generated column!
+```
+
+> [!tip] Exam use case
+> Use generated columns to **auto-partition on a derived date** from a timestamp column. When you filter `WHERE ts BETWEEN ...`, Delta can use partition pruning on `date` automatically.
+
+---
+
+## 14. How Reads Work: The Full Picture
+
+To read a Delta table, Spark:
+1. Finds the latest `.checkpoint.parquet` in `_delta_log/`
+2. Replays any JSON commit files written after the checkpoint
+3. Reconstructs the current list of **live Parquet files** (adds minus removes)
+4. Reads only those files — applying data skipping using per-file statistics
+
+This is why Delta reads are **consistent and reliable** — you always get a complete, committed snapshot regardless of concurrent writers.
+
+**Optimistic Concurrency:** Multiple writers can write simultaneously. Each reads the current version, performs their write, then tries to commit. If the log version changed while they were writing, Delta checks for conflicts. If the changes don't overlap (different rows/partitions), both succeed. If they conflict, one is retried or fails with a `ConcurrentModificationException`.
+
+---
+
+## 15. Practice Questions
+
+**Q1.** You run `VACUUM orders RETAIN 0 HOURS`. A user then tries `SELECT * FROM orders VERSION AS OF 5`. What happens?
+> **Answer:** Error — VACUUM deleted the data files for old versions. Time travel below the retention cutoff is no longer possible. You must set `spark.databricks.delta.retentionDurationCheck.enabled = false` to run VACUUM below 7 days.
+
+**Q2.** A write fails halfway through updating 10,000 rows. What is the state of the Delta table?
+> **Answer:** The table is unchanged — atomicity guarantees the partial write is never committed to the transaction log. Readers see the last complete version.
+
+**Q3.** What is the difference between `WHEN NOT MATCHED` and `WHEN NOT MATCHED BY SOURCE` in MERGE?
+> **Answer:** `WHEN NOT MATCHED` — rows in the **source** that have no match in the target (inserts). `WHEN NOT MATCHED BY SOURCE` — rows in the **target** that have no match in the source (useful for soft-deletes or keeping the target in sync with the source).
+
+**Q4.** You enable Change Data Feed on a table. A row is updated. What `_change_type` values appear?
+> **Answer:** Two rows: `update_preimage` (old values before the update) and `update_postimage` (new values after the update).
+
+**Q5.** What happens when you `SHALLOW CLONE` a Delta table and modify the clone?
+> **Answer:** The clone gets its own transaction log. Changes to the clone do NOT affect the source. New data files are written for the clone. The clone still references the original data files for existing data (no copy made).
+
+**Q6.** What does Z-ORDER actually do physically, and why does it help query performance?
+> **Answer:** Z-ORDER rewrites data files so that rows with similar values for the Z-ORDER columns are stored together in the same files. This tightens the min/max statistics per file, allowing Delta's data skipping to eliminate more files when filtering on those columns.
+
+**Q7.** You set `spark.databricks.delta.schema.autoMerge.enabled = true`. A new column arrives in source data. What happens on the next write?
+> **Answer:** The new column is automatically added to the Delta table schema and data is written including the new column. Existing rows will have `null` for the new column.

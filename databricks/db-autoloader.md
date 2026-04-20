@@ -131,3 +131,54 @@ FILES = ('file1.json', 'file2.json');  -- or PATTERN for wildcards
 ---
 
 > Related: [[db-delta]] (target Delta tables), [[db-streaming]] (Structured Streaming concepts), [[db-dlt]] (Auto Loader inside DLT pipelines)
+
+---
+
+## 8. Why Exactly-Once Matters (Conceptual Depth)
+
+**Why file listing is slow at scale:** A data lake receiving 1,000 new files per hour means 24,000 files/day, 168,000/week. Listing all files every run and comparing to a processed-files list becomes very slow. File Notification mode uses cloud-native event queues (AWS SQS, Azure Event Hub) to receive a push notification when a file lands — no listing required, O(1) per new file regardless of total directory size.
+
+**Exactly-once semantics:** Auto Loader guarantees each file is processed exactly once as long as the checkpoint is intact. If the stream restarts after a failure, it reads the checkpoint to find the last successfully processed files and resumes from there — no duplicate processing, no missed files.
+
+---
+
+## 9. Auto Loader: Standalone vs. Inside DLT
+
+When you use Auto Loader inside a DLT pipeline, DLT manages the checkpoint automatically.
+
+| Context | Who manages checkpoint? | Need `checkpointLocation`? |
+|:---|:---|:---|
+| **Standalone streaming** | You | Yes — must specify it |
+| **Inside DLT** | DLT manages it automatically | No — DLT creates it |
+
+```python
+# Inside DLT — no checkpointLocation needed
+@dlt.table(name="bronze_events")
+def bronze_events():
+    return (
+        spark.readStream
+            .format("cloudFiles")
+            .option("cloudFiles.format", "json")
+            .option("cloudFiles.schemaLocation", "/schema/events")
+            .load("abfss://raw@storage.dfs.core.windows.net/events/")
+    )
+```
+
+---
+
+## 10. Practice Questions
+
+**Q1.** Two Auto Loader streams read from the same source folder into different target tables. They share the same checkpoint location. What happens?
+> **Answer:** Data corruption — streams must NEVER share checkpoint locations. Sharing causes one stream's progress to overwrite the other's, leading to files being skipped or double-processed. Always use a unique checkpoint per stream.
+
+**Q2.** What is `availableNow=True` and how does it differ from `once=True`?
+> **Answer:** Both process available data and stop. `availableNow=True` is the modern replacement for the deprecated `once=True`. Key difference: `availableNow=True` can process multiple micro-batches in parallel, while `once=True` processed everything in a single micro-batch. Use `availableNow=True`.
+
+**Q3.** Auto Loader ingests JSON files. A new file arrives with column `discount_pct` not present before. `schemaEvolutionMode = 'addNewColumns'`. What happens?
+> **Answer:** The column is automatically added to the inferred schema (stored in `schemaLocation`). The stream continues processing. Existing rows will have `null` for `discount_pct`.
+
+**Q4.** When would you choose File Notification mode over Directory Listing mode?
+> **Answer:** When the source directory contains millions of files. Directory listing scans the whole directory each trigger — with millions of files this becomes very slow. File Notification mode uses cloud event queues, receiving a push notification per new file.
+
+**Q5.** What is the `_rescued_data` column and when does data end up there?
+> **Answer:** When `schemaEvolutionMode = 'rescue'`, any column that doesn't match the current schema is serialized as JSON and saved to `_rescued_data` instead of being dropped. Useful for debugging schema mismatches without losing data.

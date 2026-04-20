@@ -143,4 +143,60 @@ count = dbutils.jobs.taskValues.get(taskKey="ingest_task", key="record_count", d
 
 ---
 
+## 6. Git Integration
+
+Databricks notebooks can be synced with a Git repository (GitHub, GitLab, Azure DevOps).
+
+**Two modes:**
+- **Databricks Repos (legacy):** Import a Git repo into the workspace. Edit notebooks in Databricks, commit/push from the Repos UI.
+- **Git Folders (current):** Same concept, newer name. Lets you sync individual files, not just full repos.
+
+```python
+# In a notebook, check if running from a Git repo:
+# Git context shows the branch name in the notebook header
+```
+
+> [!tip] Exam context: Repos/Git Folders allow version-controlled notebooks to be used in Jobs as notebook tasks, making pipelines reproducible and deployable from CI/CD.
+
+---
+
+## 7. Notebook-scoped Libraries
+
+`%pip install` installs packages for the **current notebook session only** — other notebooks on the same cluster are not affected.
+
+```python
+# Install a specific version
+%pip install pandas==2.1.0 great-expectations
+
+# Install from a private feed
+%pip install --extra-index-url https://myfeed.example.com/pypi mypackage
+
+# Restart Python after pip install (auto-happens in newer DBR, manual in older)
+dbutils.library.restartPython()
+```
+
+> [!warning] Exam trap: `%pip` vs cluster-level libraries
+> `%pip` = notebook-scoped, session only. Cluster-level libraries (installed via the cluster UI or `init scripts`) = available to ALL notebooks on the cluster. If the exam asks "how to install a library only for one notebook", the answer is `%pip`.
+
+---
+
+## 8. Practice Questions
+
+**Q1.** What is the difference between `%run ./utils` and `dbutils.notebook.run("./utils")`?
+> **Answer:** `%run` executes synchronously and **imports all variables and functions** from the target notebook into the current scope — like a Python import. `dbutils.notebook.run()` runs the notebook as a **sub-process**, captures only its exit value (string), and can run with a timeout. Use `%run` for shared utility code; use `dbutils.notebook.run()` for orchestration.
+
+**Q2.** A `%sh` command lists files using `ls /tmp/`. Is this the same as `%fs ls /tmp/`?
+> **Answer:** No — completely different. `%sh` runs on the Driver VM's local OS filesystem. `%fs` operates on DBFS (a distributed virtual filesystem backed by cloud storage). `/tmp/` in `%sh` is temporary Driver local disk; `/tmp/` in `%fs` is DBFS.
+
+**Q3.** You install a package with `%pip install seaborn` in Notebook A. Can Notebook B on the same cluster use seaborn?
+> **Answer:** No — `%pip` is notebook-scoped. For cluster-wide packages, install them in the cluster configuration (Libraries tab) or use a cluster init script.
+
+**Q4.** A notebook calls `dbutils.widgets.get("start_date")` but no widget was created. What happens?
+> **Answer:** If a value was passed as a job parameter with that key, it returns that value. If no value was set anywhere, it throws an `InputWidgetNotDefined` error. Always use a default: `dbutils.widgets.text("start_date", "2024-01-01")`.
+
+**Q5.** You need to run three notebooks in parallel and wait for all to finish. How?
+> **Answer:** Use `dbutils.notebook.run()` calls in separate Python threads or use a Databricks Job with multiple parallel notebook tasks (parallel tasks in the workflow DAG). `%run` is synchronous and can't be parallelized.
+
+---
+
 > Related: [[db-spark]] (SparkSession in notebooks), [[db-dbfs]] (DBFS mounts), [[db-secrets]] (setting up secret scopes)

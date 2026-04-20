@@ -185,3 +185,114 @@ spark.conf.set("spark.sql.adaptive.enabled", "true")  # default: true in Databri
 ---
 
 > Related: [[db-databricks]] (cluster setup), [[db-notebooks]] (SparkSession in notebooks), [[db-delta]] (Delta as a Spark data source)
+
+---
+
+## 10. Catalyst Optimizer & Query Plans
+
+When you write a DataFrame transformation, Spark doesn't execute it immediately. It passes through the **Catalyst Optimizer**:
+
+```
+Your code
+    ↓
+Unresolved Logical Plan  (parse — check syntax)
+    ↓
+Resolved Logical Plan    (analyze — verify columns exist)
+    ↓
+Optimized Logical Plan   (optimize — push filters down, prune columns)
+    ↓
+Physical Plans           (multiple strategies generated)
+    ↓
+Selected Physical Plan   (cost model picks the best)
+    ↓
+Execution (Tungsten code generation)
+```
+
+**Key optimizations Catalyst does automatically:**
+- **Predicate pushdown** — moves `filter()` as early as possible, before joins/aggregations
+- **Column pruning** — only reads columns actually used in the query
+- **Constant folding** — evaluates constant expressions at compile time
+
+```python
+# See the full plan
+df.explain()              # simple physical plan
+df.explain("extended")    # logical + physical plans
+df.explain("formatted")   # formatted version (most readable)
+df.explain("cost")        # with cost estimates
+```
+
+> [!tip] `df.explain()` is your primary debugging tool for performance issues. Look for: missing predicate pushdown, sort-merge joins where broadcast would be better, unnecessary shuffles.
+
+---
+
+## 11. Skewed Data
+
+**Skew** happens when data is unevenly distributed across partitions — one partition has 10M rows while others have 100. That one executor becomes the bottleneck (the "straggler").
+
+**How to detect skew:**
+- Spark UI → Stages tab → look for one task taking 10× longer than others
+- Stage summary statistics: huge difference between median and max task duration
+
+**How to fix skew:**
+
+```python
+# AQE handles most cases automatically (enabled by default in Databricks)
+# For extreme skew, use salting manually:
+
+from pyspark.sql.functions import concat, lit, rand, floor
+
+# Add a random salt prefix to the skewed key
+df_salted = df.withColumn(
+    "salted_key",
+    concat(col("customer_id"), lit("_"), floor(rand() * 10).cast("string"))
+)
+# Then aggregate within each salt bucket and sum up afterward
+```
+
+> [!note] AQE Skew Join Optimization
+> If AQE detects skewed partitions (one is 5× larger than median), it automatically splits them. This is why AQE is enabled by default in Databricks — it handles most skew silently.
+
+---
+
+## 12. Tuning Shuffle Partitions
+
+The default 200 shuffle partitions is too many for small data and too few for large data.
+
+**Rule of thumb:**
+- Target **128 MB–200 MB per partition** after a shuffle
+- Formula: `Total data size ÷ target partition size = number of partitions`
+- Example: 10 GB data → 10,000 MB ÷ 128 MB ≈ 78 partitions
+
+```python
+# Set shuffle partitions
+spark.conf.set("spark.sql.shuffle.partitions", "100")
+
+# With AQE enabled (default), Databricks auto-coalesces small partitions
+# So you can set this higher and let AQE merge small ones
+```
+
+> [!important] Exam trap
+> The default `200` is almost always wrong. Too few partitions = out of memory. Too many = scheduling overhead. Always tune this for your data size.
+
+---
+
+## 13. Practice Questions
+
+**Q1.** Which of the following triggers a new Stage in Spark execution?
+a) `filter()` b) `withColumn()` c) `groupBy().count()` d) `select()`
+> **Answer:** c — `groupBy().count()` is a wide transformation that causes a shuffle, creating a new stage boundary.
+
+**Q2.** You call `df.cache()` and then `df.count()`. When does the data actually get cached?
+> **Answer:** On the first Action after `cache()` — the `count()` call. `cache()` is lazy; it marks the DataFrame to be cached but doesn't read anything yet.
+
+**Q3.** What is the danger of calling `df.collect()` on a large DataFrame?
+> **Answer:** It pulls ALL data from all executors to the Driver node's memory. If the data exceeds Driver RAM, you get `OutOfMemoryError`. Use `.show()`, `.limit()`, or write to a sink instead.
+
+**Q4.** You join a 500 GB table with a 15 MB lookup table. Spark uses a sort-merge join. How would you optimize this?
+> **Answer:** Use a broadcast join — `large_df.join(broadcast(small_df), "key")`. Broadcasting the 15 MB table to every executor eliminates the shuffle entirely. Set `spark.sql.autoBroadcastJoinThreshold` above 15 MB if auto-broadcast isn't triggering.
+
+**Q5.** What is the difference between `repartition(10)` and `coalesce(10)`?
+> **Answer:** `repartition(10)` does a full shuffle — can both increase and decrease partitions, distributes evenly. `coalesce(10)` only merges existing partitions without a shuffle — can only reduce count, may result in uneven partitions. Use `coalesce` when reducing to avoid the shuffle cost.
+
+**Q6.** A Spark job has 3 Actions. How many Jobs does this generate?
+> **Answer:** 3 Jobs — each Action triggers one Job.

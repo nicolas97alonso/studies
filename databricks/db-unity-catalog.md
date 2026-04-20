@@ -165,3 +165,94 @@ The recipient reads the data using their own Databricks (or open-source Delta Sh
 ---
 
 > Related: [[db-sparksql]] (SQL operations on UC tables), [[db-datalake]] (storage credentials for external tables), [[db-databricks]] (cluster access modes for UC)
+
+---
+
+## 8. Row-Level & Column-Level Security (Dynamic Views)
+
+> [!important] Exam Priority: HIGH
+> Use **dynamic views** to enforce row and column-level security based on who's querying. The pattern: grant access to the VIEW, not the underlying table.
+
+### Row-Level Security
+
+```sql
+-- Dynamic view that filters rows based on group membership
+CREATE VIEW main.sales.orders_secure AS
+SELECT * FROM main.sales.orders
+WHERE
+  (is_account_group_member('region_emea') AND region = 'EMEA')
+  OR (is_account_group_member('region_apac') AND region = 'APAC')
+  OR is_account_group_member('data_admins');  -- admins see all
+
+-- Grant access to the VIEW, revoke direct table access
+REVOKE SELECT ON TABLE main.sales.orders FROM `analysts`;
+GRANT SELECT ON VIEW main.sales.orders_secure TO `analysts`;
+```
+
+### Column-Level Security (Masking)
+
+```sql
+CREATE VIEW main.sales.customers_masked AS
+SELECT
+  customer_id,
+  name,
+  CASE
+    WHEN is_account_group_member('pii_allowed') THEN email
+    ELSE '***MASKED***'
+  END AS email
+FROM main.sales.customers;
+```
+
+> [!note] `current_user()` vs `is_account_group_member()`
+> `current_user()` returns the calling user's email. `is_account_group_member('group')` returns true/false. Use groups to manage access by team/role rather than individual user.
+
+---
+
+## 9. External Locations & Storage Credentials
+
+External Tables in UC require a two-step setup before creating any tables:
+
+```
+Storage Credential  →  External Location  →  External Table / Volume
+(IAM / Service Principal)  (storage path)       (metadata)
+```
+
+```sql
+-- Step 1: Create a Storage Credential (cloud IAM role)
+CREATE STORAGE CREDENTIAL my_adls_cred
+WITH AZURE_MANAGED_IDENTITY (DIRECTORY_ID='...', APPLICATION_ID='...');
+
+-- Step 2: Create an External Location (map credential to a path)
+CREATE EXTERNAL LOCATION my_data_location
+URL 'abfss://data@mystorageaccount.dfs.core.windows.net/'
+WITH (STORAGE CREDENTIAL my_adls_cred);
+
+-- Step 3: Create External Table (just needs the location path)
+CREATE TABLE main.bronze.raw_events
+USING DELTA
+LOCATION 'abfss://data@mystorageaccount.dfs.core.windows.net/events/';
+```
+
+> [!tip] Set up Storage Credentials and External Locations once per storage path. All tables pointing to that path reuse the same credential — no per-table credential management.
+
+---
+
+## 10. Practice Questions
+
+**Q1.** A table `main.sales.orders` is a managed table. A user runs `DROP TABLE main.sales.orders`. What is deleted?
+> **Answer:** Both metadata AND the underlying data files. For an **external table**, only metadata is removed — files are preserved.
+
+**Q2.** What three privileges must a user have to run `SELECT * FROM main.sales.orders`?
+> **Answer:** `USE CATALOG` on catalog `main`, `USE SCHEMA` on schema `main.sales`, AND `SELECT` on table `main.sales.orders`. Missing any one causes access denied.
+
+**Q3.** What cluster access mode is required to use Unity Catalog row-level security via dynamic views?
+> **Answer:** **Single User** or **Shared**. No Isolation Shared does NOT support fine-grained UC access controls.
+
+**Q4.** What is the difference between a Volume and an External Table in Unity Catalog?
+> **Answer:** A Volume is for **non-tabular files** (CSVs, images, model artifacts) — it's a managed path, not a queryable table. An External Table points to structured data that Spark can query as a table.
+
+**Q5.** A company has 3 Databricks workspaces in the same region. How many UC Metastores do they need?
+> **Answer:** One metastore per region. All 3 workspaces share a single metastore — data and governance policies are unified across workspaces.
+
+**Q6.** You grant `SELECT ON TABLE orders TO data_analysts`. Then you add the user to `senior_analysts` and grant `SELECT ON ALL TABLES IN SCHEMA main.sales TO senior_analysts`. Does the user have SELECT on `orders`?
+> **Answer:** Yes — UC uses additive permissions. The user gets the union of all privileges from all groups they belong to.
