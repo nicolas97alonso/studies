@@ -1,92 +1,131 @@
 ---
-tags: [databricks, architecture, clusters]
-aliases: [Databricks Architecture, Clusters]
+tags: [databricks, architecture, clusters, exam-priority]
+aliases: [Databricks Architecture, Clusters, DBU]
 ---
 
 # Databricks Architecture & Clusters
 
-## 1. High-Level Architecture
-Databricks uses a **split-plane** architecture to separate management from processing.
+> [!important] Exam Priority: HIGH
+> Cluster types (All-Purpose vs Job), access modes for Unity Catalog, and autoscaling are frequently tested.
 
-### A. Control Plane
-*Managed by Databricks in their own cloud account.*
-- **Web UI:** Workspace management, notebook authoring, and dashboarding.
-- **Compute Orchestration:** The Cluster Manager that provisions and manages VM lifecycles.
-- **Unity Catalog:** Centralized data governance (security, auditing, lineage).
-- **Workspace Assets:** Storage for notebooks, saved queries, and code metadata.
+---
 
-### B. Compute Plane (Data Plane)
-*Where your data processing actually happens.*
-- **Classic Compute:** Runs in the **customer's** cloud subscription. You manage the VPC/VNet and VMs.
-- **Serverless Compute:** Managed by Databricks — always-on, instant resource pool, AI-autoscaled.
+## 1. High-Level Architecture (Split-Plane)
+
+Databricks separates management from processing:
+
+### Control Plane *(Databricks-managed, in Databricks' cloud account)*
+- Web UI, notebook authoring, dashboards
+- Cluster Manager — provisions/terminates VMs
+- Unity Catalog — centralized governance
+- Workspace assets — notebooks, queries, code metadata
+
+### Data Plane / Compute Plane *(where your data is processed)*
+
+| Type | Runs in | Setup |
+|:---|:---|:---|
+| **Classic Compute** | Customer's cloud subscription | You manage VMs and VNet |
+| **Serverless Compute** | Databricks-managed subscription | Instant, always-on, no VMs to configure |
+
+> [!note] Two separate bills
+> You pay Databricks for **DBU usage** AND your cloud provider for **VM/infrastructure costs** separately. These are two different invoices.
 
 ---
 
 ## 2. Clusters
-A cluster is a set of VMs working together as a single computational unit.
 
-### Topology
-- **Driver Node:** The master node. Maintains state, responds to user queries, distributes work.
-- **Worker Nodes:** Run the Spark Executors and perform the actual data processing.
+A cluster = a set of VMs acting as a single computational unit.
 
-> See [[db-spark]] for a deep dive into how Spark uses this topology.
+### Node Roles
+- **Driver Node** — maintains state, responds to user queries, distributes work to executors
+- **Worker Nodes** — run Spark Executors, perform actual data processing
+
+See [[db-spark]] for how Spark uses this topology.
 
 ---
 
 ## 3. Cluster Types (Classic Compute)
 
+> [!important] Exam Priority: HIGH — this question appears constantly.
+
 | Feature | All-Purpose Cluster | Job Cluster |
-| :--- | :--- | :--- |
-| **Primary Use** | Interactive analysis & development | Automated production pipelines |
-| **Lifecycle** | Created manually; persistent | Created/terminated by a specific Job |
-| **Cost** | Higher DBU cost | Lower (discounted) DBU cost |
-| **Sharing** | Shared among multiple users | Isolated to one automated task |
+|:---|:---|:---|
+| **Primary use** | Interactive dev & exploration | Automated production pipelines |
+| **Lifecycle** | Created manually; persists until stopped | Created at job start, terminated at job end |
+| **Cost** | Higher DBU rate | Lower (discounted) DBU rate |
+| **Sharing** | Multiple users simultaneously | Isolated to one job run |
 
 ---
 
-## 4. Configuration
+## 4. Cluster Configuration
 
 ### Node Types
-- **Multi-node:** 1 Driver + N Workers. For large-scale, parallelized workloads.
-- **Single-node:** Driver only. For lightweight analytics, small datasets, or non-distributed libraries.
+- **Multi-node:** 1 Driver + N Workers — for distributed, large-scale workloads
+- **Single-node:** Driver only — for small datasets, local libraries (pandas, scikit-learn), ML development
 
-### Access Modes
-- **Single User:** Dedicated to one individual.
-- **Shared:** Multiple users with secure isolation between sessions.
-- **No Isolation Shared:** Legacy mode — high performance but no security boundaries between users.
+### Access Modes (Unity Catalog requirement)
+
+| Mode | UC Support | Notes |
+|:---|:---|:---|
+| **Single User** | Full support | Dedicated to one user |
+| **Shared** | Full support | Multiple users, secure isolation between sessions |
+| **No Isolation Shared** | Partial | Legacy — no security boundary between users. Cannot use UC fine-grained access. |
+
+> [!important] Exam trap
+> To use Unity Catalog fine-grained access controls (row/column-level security), the cluster must be in **Single User** or **Shared** access mode. No Isolation Shared does not support this.
 
 ### Key Features
-- **Databricks Runtime (DBR):** Core engine (Spark + optimized libraries). Use **Databricks ML** for pre-installed ML frameworks (PyTorch, TensorFlow).
-- **Autoscaling:** Set a Min/Max worker count; Databricks adds/removes workers based on load.
-- **Auto-termination:** Shuts down the cluster after a defined idle period to prevent runaway costs.
-- **Cluster Policies:** Admin-defined templates that enforce settings (e.g., restricting VM sizes).
+- **Databricks Runtime (DBR):** Core engine = Spark + optimized libraries. Use **DBR ML** for pre-installed ML frameworks (PyTorch, TensorFlow, XGBoost).
+- **Autoscaling:** Set Min/Max workers; Databricks scales up/down based on load.
+- **Auto-termination:** Shuts down after N minutes of inactivity. Always set this on All-Purpose clusters.
+- **Cluster Policies:** Admin-defined templates restricting settings (VM sizes, max cost, timeout). Enforces compliance.
 
 ---
 
 ## 5. Cluster Pools
-**Problem:** Cloud providers take 3–7 minutes to boot VMs.  
-**Solution:** Pools maintain a small set of warm, idle VM instances. When a cluster starts, it pulls from the pool — startup drops to seconds.
 
-Set a **Min Idle** of 1–2 VMs to guarantee instant availability.
+**Problem:** Cloud VMs take 3–7 minutes to boot.  
+**Solution:** Pools maintain a set of warm, pre-allocated VMs. Cluster start time drops to seconds.
 
----
-
-## 6. Pricing & DBU Calculation
-Databricks costs are measured in **DBUs (Databricks Units)**.
-
-### Total Cost
-Two separate bills:
-1. **Databricks Software:** `Total DBUs × Price (based on Workload/Tier)`
-2. **Cloud Infrastructure:** `Driver VM Cost + Σ Worker VM Costs`
-
-### VM Types
-| Type | Best For |
-| :--- | :--- |
-| Memory Optimized | Heavy joins / shuffles |
-| Compute Optimized | Complex transformations |
-| Storage Optimized | High I/O / caching |
-| GPU Accelerated | Deep Learning |
+- Set **Min Idle** of 1–2 to guarantee fast startups
+- Reduces costs vs always-on clusters while still being fast
 
 ---
 
-> **Tip:** Always set **auto-termination** (20–30 min) on All-Purpose clusters and use **Job Clusters** for anything schedulable.
+## 6. Databricks Runtime Versions
+
+| Runtime | Contents |
+|:---|:---|
+| **Databricks Runtime (DBR)** | Spark, Delta Lake, standard Python libraries |
+| **DBR ML** | DBR + PyTorch, TensorFlow, scikit-learn, XGBoost |
+| **DBR Photon** | DBR with Photon query engine (vectorized, faster SQL) |
+
+> [!tip] For exam: Photon = faster SQL/Delta queries via vectorized execution. Not for arbitrary Python code.
+
+---
+
+## 7. Pricing & DBU Calculation
+
+**DBU = Databricks Unit** — the billing unit for compute.
+
+```
+Total Databricks cost = Total DBUs × Price per DBU (varies by workload type and tier)
+Total cloud cost      = Driver VM cost + Σ Worker VM costs (per hour)
+```
+
+### VM Type Selection
+
+| VM Type | Best For |
+|:---|:---|
+| Memory Optimized | Heavy joins, shuffles, large DataFrames |
+| Compute Optimized | Complex transformations, large ML inference |
+| Storage Optimized | High I/O, disk-heavy operations |
+| GPU Accelerated | Deep learning, image/video processing |
+
+---
+
+> **Always set auto-termination (20–30 min) on All-Purpose clusters. Use Job Clusters for anything schedulable.**
+
+---
+
+> Related: [[db-spark]] (Spark internals), [[db-workflows]] (Job Clusters in pipelines), [[db-unity-catalog]] (cluster access modes for UC)

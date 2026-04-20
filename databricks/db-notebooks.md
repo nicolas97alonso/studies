@@ -5,43 +5,44 @@ aliases: [Databricks Notebooks, Magic Commands, dbutils]
 
 # Databricks Notebooks
 
-Notebooks are the primary interactive development environment in Databricks. Each notebook is attached to a cluster and executes code cell by cell. Default language is Python, but you can switch per cell.
+Notebooks are the primary interactive development environment in Databricks. Each notebook is attached to a cluster and executes code cell by cell.
 
 ---
 
-## Magic Commands
+## 1. Magic Commands
 
-Magic commands change the behavior or language of a single cell. They start with `%`.
+Change the language or behavior of a single cell with `%` prefix.
 
 | Command | Purpose |
-| :--- | :--- |
-| `%python` | Run the cell as Python |
-| `%sql` | Run the cell as Spark SQL |
-| `%scala` | Run the cell as Scala |
-| `%r` | Run the cell as R |
-| `%md` | Render the cell as Markdown |
-| `%fs` | Run DBFS file system commands (wraps `dbutils.fs`) |
-| `%sh` | Run shell commands on the **Driver** node only |
+|:---|:---|
+| `%python` | Run cell as Python |
+| `%sql` | Run cell as Spark SQL |
+| `%scala` | Run cell as Scala |
+| `%r` | Run cell as R |
+| `%md` | Render cell as Markdown |
+| `%fs` | DBFS file system commands (shorthand for `dbutils.fs`) |
+| `%sh` | Shell commands on the **Driver node only** (not distributed) |
 | `%pip` | Install Python packages into the notebook environment |
 | `%run` | Execute another notebook and import its variables/functions |
 
+> [!note] `%sh` vs `%fs`
+> `%sh` runs OS-level shell commands on the Driver VM. `%fs` operates on DBFS (the distributed file system). They are completely different namespaces.
+
 ---
 
-## The Three Environments
-
-Understanding what each environment is helps avoid confusion:
+## 2. The Three Environments
 
 | Environment | What it is | Example paths |
-| :--- | :--- | :--- |
-| **OS Filesystem** | Local disk of the Driver VM. Works like a normal Linux machine. | `/tmp/`, `/home/` |
-| **DBFS** | Virtual filesystem backed by cloud storage (ADLS, S3). Shared across the cluster and persists after shutdown. | `dbfs:/mnt/raw/`, `/mnt/raw/` |
-| **Python Environment** | The Python runtime your notebook runs in. Packages installed with `%pip` live here. | `import pandas` |
+|:---|:---|:---|
+| **OS Filesystem** | Local disk of the Driver VM | `/tmp/`, `/home/ubuntu/` |
+| **DBFS** | Virtual filesystem backed by cloud storage (shared, persists after cluster restart) | `dbfs:/mnt/raw/`, `/mnt/raw/` |
+| **Python Environment** | The Python runtime (packages installed with `%pip`) | `import pandas` |
 
-> **Rule of thumb:** Use DBFS (`/mnt/...`) for data files you want to persist. Use the OS filesystem only for temp files needed during a single run.
+> [!tip] Use DBFS/`/mnt/...` for any data you want to persist. Use the OS filesystem only for temp files needed within a single run.
 
 ---
 
-## Importing Other Notebooks
+## 3. `%run` — Import Another Notebook
 
 ```python
 # Relative path (same folder)
@@ -51,75 +52,95 @@ Understanding what each environment is helps avoid confusion:
 %run ../shared/config
 ```
 
-After `%run`, all variables and functions defined in the called notebook are available in the current one.
+After `%run`, all variables and functions defined in the called notebook are in scope. There is **no return value** — it's like a Python import.
+
+> [!note] `%run` vs `dbutils.notebook.run()`
+> `%run` — imports variables, runs synchronously, used for sharing code.
+> `dbutils.notebook.run()` — runs a notebook as a sub-task, captures return value, can run in parallel.
 
 ---
 
-## Databricks Utilities (`dbutils`)
+## 4. `dbutils` — Databricks Utilities
 
-`dbutils` is a Python object pre-loaded in every notebook. It provides utilities for working with files, secrets, and widgets — things you can't easily do with magic commands alone.
+Pre-loaded Python object in every notebook for file system ops, secrets, widgets, and notebook chaining.
 
 ```python
-dbutils.help()           # list all utility groups
-dbutils.fs.help()        # list file system commands
+dbutils.help()       # list all utility groups
+dbutils.fs.help()    # list file system commands
 ```
 
-### File System Utilities (`dbutils.fs`)
+### `dbutils.fs` — File System
 
 ```python
-dbutils.fs.ls("/mnt/raw/")           # list files and folders
-dbutils.fs.mkdirs("/mnt/raw/new/")   # create a directory
-dbutils.fs.cp("source", "dest")      # copy a file
-dbutils.fs.rm("path", recurse=True)  # delete (recurse for folders)
+dbutils.fs.ls("/mnt/raw/")              # list directory
+display(dbutils.fs.ls("/mnt/raw/"))     # render as table
+
+dbutils.fs.mkdirs("/mnt/raw/new/")      # create directory
+dbutils.fs.cp("source/", "dest/", recurse=True)  # copy
+dbutils.fs.mv("old/path", "new/path")  # move/rename
+dbutils.fs.rm("/mnt/old/", recurse=True)  # delete
+dbutils.fs.head("/mnt/file.csv", maxBytes=10000)  # preview file contents
 ```
 
-`display()` renders the list as a formatted table instead of raw Python output:
+### `dbutils.secrets` — Read Secrets
 
 ```python
-items = dbutils.fs.ls("/databricks-datasets/")
-display(items)
-
-# Count folders vs files
-folder_count = len([i for i in items if i.name.endswith("/")])
-file_count   = len([i for i in items if not i.name.endswith("/")])
-```
-
-### Secrets Utilities (`dbutils.secrets`)
-
-```python
-# Retrieve a secret (value is redacted in output)
 password = dbutils.secrets.get(scope="my-scope", key="db-password")
+# Note: printed value is always [REDACTED] — can't be leaked
+
+dbutils.secrets.listScopes()              # available scopes
+dbutils.secrets.list("my-scope")         # keys in a scope
 ```
 
-> See [[db-secrets]] for how to set up Secret Scopes.
-
-### Widget Utilities (`dbutils.widgets`)
-
-Widgets create interactive input controls in the notebook UI — useful for parameterizing notebooks used as jobs.
+### `dbutils.widgets` — Parameterize Notebooks
 
 ```python
-dbutils.widgets.text("environment", "dev", "Environment")
-env = dbutils.widgets.get("environment")
+dbutils.widgets.text("start_date", "2024-01-01", "Start Date")
+dbutils.widgets.dropdown("env", "dev", ["dev", "staging", "prod"], "Environment")
+dbutils.widgets.combobox("region", "us-east", ["us-east", "eu-west"])
+dbutils.widgets.multiselect("tables", "orders", ["orders", "users", "products"])
+
+start = dbutils.widgets.get("start_date")
+dbutils.widgets.remove("start_date")
+dbutils.widgets.removeAll()
 ```
 
-### Notebook Utilities (`dbutils.notebook`)
+### `dbutils.notebook` — Notebook Orchestration
 
 ```python
-# Run another notebook and capture its return value
-result = dbutils.notebook.run("./child-notebook", timeout_seconds=60, arguments={"key": "value"})
+# Run a child notebook; returns its exit value
+result = dbutils.notebook.run(
+    "./child-notebook",
+    timeout_seconds=300,
+    arguments={"start_date": "2024-01-01"}
+)
+
+# Exit a notebook with a return value (readable by parent)
+dbutils.notebook.exit("SUCCESS: 42 records processed")
+```
+
+### `dbutils.jobs` — Task Values (in Workflows)
+
+```python
+# Set a value to pass to downstream tasks
+dbutils.jobs.taskValues.set(key="record_count", value=42)
+
+# Retrieve from a previous task
+count = dbutils.jobs.taskValues.get(taskKey="ingest_task", key="record_count", default=0)
 ```
 
 ---
 
-## Magic Commands vs. `dbutils`
+## 5. Magic Commands vs. `dbutils`
 
 | Use Case | Choose |
-| :--- | :--- |
-| Quick, one-off file browsing or SQL query | Magic command (`%fs`, `%sql`) |
-| Parameterized, reusable, production code | `dbutils` |
-| Passing values between notebooks | `dbutils.notebook.run()` |
-| Installing packages | `%pip install ...` |
+|:---|:---|
+| Quick one-off file browsing | `%fs ls /mnt/raw/` |
+| Parameterized production code | `dbutils.fs.ls()` |
+| Passing values between notebooks | `dbutils.notebook.run()` + `dbutils.notebook.exit()` |
+| Installing packages | `%pip install <package>` |
+| Reading secrets | `dbutils.secrets.get()` |
 
 ---
 
-> Related: [[db-spark]] (SparkSession in notebooks), [[db-dbfs]] (DBFS mounts), [[db-secrets]] (using secrets in notebooks)
+> Related: [[db-spark]] (SparkSession in notebooks), [[db-dbfs]] (DBFS mounts), [[db-secrets]] (setting up secret scopes)
